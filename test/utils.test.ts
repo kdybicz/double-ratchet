@@ -1,8 +1,10 @@
 import {
+	CONCAT,
 	DECRYPT,
 	DH,
 	ENCRYPT,
 	GENERATE_DH,
+	HEADER,
 	KDF_CK,
 	KDF_RK,
 } from "../src/utils";
@@ -101,10 +103,42 @@ describe("utils", () => {
 		const encrypted = ENCRYPT(masterKey, plaintext, associatedData);
 
 		// when
-		const [decryptedText, decryptedData] = DECRYPT(masterKey, encrypted);
+		const decryptedText = DECRYPT(masterKey, encrypted, associatedData);
 		// then
-		expect(typeof decryptedText).toBe("string");
 		expect(decryptedText).toEqual(plaintext);
-		expect(associatedData).toEqual(decryptedData);
+	});
+
+	test("header", () => {
+		// given
+		const pair = GENERATE_DH();
+
+		// when
+		const header = HEADER(pair, 4, 5);
+		// then
+		expect(header).toEqual({
+			dh: pair.publicKey,
+			pn: 4,
+			n: 5,
+		});
+	});
+
+	test("concat", () => {
+		// given
+		const pair = GENERATE_DH();
+		// and
+		const header = HEADER(pair, 4, 5);
+		// and
+		const associatedData = Buffer.from("some random data");
+
+		// when
+		const headerWithAssociatedData = CONCAT(associatedData, header);
+		// then
+		expect(headerWithAssociatedData).toEqual(
+			`${associatedData.toString("hex")}${JSON.stringify({
+				dh: pair.publicKey,
+				pn: 4,
+				n: 5,
+			})}`,
+		);
 	});
 });

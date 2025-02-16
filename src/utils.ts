@@ -33,9 +33,12 @@ export const DH = (
 	});
 };
 
-export const KDF_RK = (rk: Buffer<ArrayBufferLike>, dh_out: Buffer): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>] => {
+export const KDF_RK = (
+	rk: Buffer<ArrayBufferLike>,
+	dh_out: Buffer,
+): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>] => {
 	if (rk?.byteLength !== 32) {
-		throw new Error(`Invalid key size: ${rk?.byteLength}`)
+		throw new Error(`Invalid key size: ${rk?.byteLength}`);
 	}
 
 	const kdf = hkdfSync("sha512", dh_out, rk, "app-specific-secret-key", 64);
@@ -46,37 +49,41 @@ export const KDF_RK = (rk: Buffer<ArrayBufferLike>, dh_out: Buffer): [Buffer<Arr
 	return [Buffer.from(rootKey), Buffer.from(chainKey)];
 };
 
-export const KDF_CK = (ck: Buffer<ArrayBufferLike>): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>] => {
+export const KDF_CK = (
+	ck: Buffer<ArrayBufferLike>,
+): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>] => {
 	if (ck?.byteLength !== 32) {
-		throw new Error(`Invalid key size: ${ck?.byteLength}`)
+		throw new Error(`Invalid key size: ${ck?.byteLength}`);
 	}
 
 	const messageKey = createHmac("sha512", ck)
 		.update(Buffer.from([0x01]))
-		.digest().subarray(0, 32);
-		// .digest("hex");
+		.digest()
+		.subarray(0, 32);
+	// .digest("hex");
 	const chainKey = createHmac("sha512", ck)
 		.update(Buffer.from([0x02]))
-		.digest().subarray(0, 32);
-		// .digest("hex");
+		.digest()
+		.subarray(0, 32);
+	// .digest("hex");
 
 	return [messageKey, chainKey];
 };
 
 export const ENCRYPT = (
-	mk: Buffer<ArrayBufferLike>,
+	messageKey: Buffer<ArrayBufferLike>,
 	plaintext: string,
-	associated_data: string,
+	associatedData: string,
 ): string => {
-	if (mk?.byteLength !== 32) {
-		throw new Error(`Invalid key size: ${mk?.byteLength}`)
+	if (messageKey?.byteLength !== 32) {
+		throw new Error(`Invalid key size: ${messageKey?.byteLength}`);
 	}
 
 	const hashOutputLength = 80;
 	const salt = Buffer.alloc(hashOutputLength, 0x00);
 	const hkdf_out = hkdfSync(
 		"sha512",
-		mk,
+		messageKey,
 		salt,
 		"app-specific-encryption-key",
 		hashOutputLength,
@@ -97,20 +104,20 @@ export const ENCRYPT = (
 	ciphertext += cipher.final("hex");
 
 	// sign
-	const message = `${associated_data}:${ciphertext}`;
 	const signature = createHmac("sha512", Buffer.from(authenticationKey))
-		.update(message)
+		.update(`${associatedData}${plaintext}`)
 		.digest("hex");
 
-	return `${message}:${signature}`;
+	return `${ciphertext}:${signature}`;
 };
 
 export const DECRYPT = (
 	mk: Buffer<ArrayBufferLike>,
 	encrypted_message: string,
-): [string, string] => {
+	associatedData: string,
+): string => {
 	if (mk?.byteLength !== 32) {
-		throw new Error(`Invalid key size: ${mk?.byteLength}`)
+		throw new Error(`Invalid key size: ${mk?.byteLength}`);
 	}
 
 	const hashOutputLength = 80;
@@ -134,21 +141,46 @@ export const DECRYPT = (
 	);
 
 	// prepare data
-	const [associated_data, ciphertext, signature] = encrypted_message.split(":");
+	const [ciphertext, received_signature] = encrypted_message.split(":");
 
 	// decrypt
 	let plaintext = cipher.update(ciphertext, "hex", "utf-8");
 	plaintext += cipher.final("utf-8");
 
 	// sign
-	const message = `${associated_data}:${ciphertext}`;
-	const new_signature = createHmac("sha512", Buffer.from(authenticationKey))
-		.update(message)
+	const current_signature = createHmac("sha512", Buffer.from(authenticationKey))
+		.update(`${associatedData}${plaintext}`)
 		.digest("hex");
 
-	if (signature !== new_signature) {
+	if (received_signature !== current_signature) {
 		throw new Error("Invalid signature!");
 	}
 
-	return [plaintext, associated_data];
+	return plaintext;
 };
+
+export type Header = {
+	dh: string;
+	pn: number;
+	n: number;
+};
+
+export const HEADER = (
+	dh_pair: KeyPairSyncResult<string, string>,
+	previousChainLength: number,
+	messageNumber: number,
+): Header => {
+	return {
+		dh: dh_pair.publicKey,
+		pn: previousChainLength,
+		n: messageNumber,
+	};
+};
+
+export const CONCAT = (associatedData: Buffer, header: Header): string => {
+	const headerString = JSON.stringify(header);
+	const associatedDataString = Buffer.from(associatedData).toString("hex");
+	return `${associatedDataString}${headerString}`;
+};
+
+export const MAX_SKIP = 32;
