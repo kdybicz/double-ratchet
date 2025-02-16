@@ -1,4 +1,15 @@
 {
-  "name": "double-ratchet",
-  "packageManager": "yarn@4.6.0"
+	"name": "double-ratchet",
+	"packageManager": "yarn@4.6.0",
+	"scripts": {
+		"test": "jest"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/jest": "^29.5.14",
+		"@types/node": "^22.13.4",
+		"jest": "^29.7.0",
+		"ts-jest": "^29.2.5",
+		"typescript": "^5.7.3"
+	}
 }
