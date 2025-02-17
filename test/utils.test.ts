@@ -15,8 +15,8 @@ describe("utils", () => {
 		const pair = GENERATE_DH();
 
 		// expect
-		expect(typeof pair.publicKey).toBe("string");
-		expect(typeof pair.privateKey).toBe("string");
+		expect(typeof pair.publicKey).toBe("object");
+		expect(typeof pair.privateKey).toBe("object");
 	});
 
 	test("Generate Alice and Bob Diffie-Hellman secrets that match", () => {
@@ -25,8 +25,8 @@ describe("utils", () => {
 		const bob = GENERATE_DH();
 
 		// when
-		const secret1 = DH(alice, bob.publicKey);
-		const secret2 = DH(bob, alice.publicKey);
+		const secret1 = DH(alice, bob.publicKey.toString("hex"));
+		const secret2 = DH(bob, alice.publicKey.toString("hex"));
 
 		expect(secret1.toString("hex")).toEqual(secret2.toString("hex"));
 	});
@@ -37,7 +37,7 @@ describe("utils", () => {
 		const bob = GENERATE_DH();
 		// and
 		const rootKey = Buffer.from("some random key some random key!");
-		const secret = DH(alice, bob.publicKey);
+		const secret = DH(alice, bob.publicKey.toString("hex"));
 
 		// when
 		const [rootKey1, chainKey1] = KDF_RK(rootKey, secret);
@@ -116,7 +116,7 @@ describe("utils", () => {
 		const header = HEADER(pair, 4, 5);
 		// then
 		expect(header).toEqual({
-			dh: pair.publicKey,
+			dh: pair.publicKey.toString("hex"),
 			pn: 4,
 			n: 5,
 		});
@@ -135,7 +135,7 @@ describe("utils", () => {
 		// then
 		expect(headerWithAssociatedData).toEqual(
 			`${associatedData.toString("hex")}${JSON.stringify({
-				dh: pair.publicKey,
+				dh: pair.publicKey.toString("hex"),
 				pn: 4,
 				n: 5,
 			})}`,

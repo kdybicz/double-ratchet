@@ -9,7 +9,10 @@ describe("double ratchet", () => {
 		const keyPair = GENERATE_DH();
 
 		// when
-		const ratchet = DoubleRatchet.fromPublicKey(rootKey, keyPair.publicKey);
+		const ratchet = DoubleRatchet.fromPublicKey(
+			rootKey,
+			keyPair.publicKey.toString("hex"),
+		);
 		const [header, message] = ratchet.RatchetEncrypt(
 			"plain text message",
 			Buffer.from(""),

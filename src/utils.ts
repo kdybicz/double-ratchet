@@ -10,26 +10,36 @@ import {
 	hkdfSync,
 } from "node:crypto";
 
-export const GENERATE_DH = (): KeyPairSyncResult<string, string> => {
+export const GENERATE_DH = (): KeyPairSyncResult<Buffer, Buffer> => {
 	return generateKeyPairSync("x25519", {
 		publicKeyEncoding: {
 			type: "spki",
-			format: "pem",
+			format: "der",
 		},
 		privateKeyEncoding: {
 			type: "pkcs8",
-			format: "pem",
+			format: "der",
 		},
 	});
 };
 
 export const DH = (
-	dh_pair: KeyPairSyncResult<string, string>,
+	dh_pair: KeyPairSyncResult<Buffer, Buffer>,
 	dh_pub: string,
 ): Buffer => {
 	return diffieHellman({
-		publicKey: createPublicKey(dh_pub),
-		privateKey: createPrivateKey(dh_pair.privateKey),
+		publicKey: createPublicKey({
+			key: dh_pub,
+			format: "der",
+			type: "spki",
+			encoding: "hex",
+		}),
+		privateKey: createPrivateKey({
+			key: dh_pair.privateKey,
+			format: "der",
+			type: "pkcs8",
+			encoding: "hex",
+		}),
 	});
 };
 
@@ -108,7 +118,7 @@ export const ENCRYPT = (
 		.update(`${associatedData}${plaintext}`)
 		.digest("hex");
 
-	return `${ciphertext}:${signature}`;
+	return `${ciphertext}${signature}`;
 };
 
 export const DECRYPT = (
@@ -141,7 +151,13 @@ export const DECRYPT = (
 	);
 
 	// prepare data
-	const [ciphertext, received_signature] = encrypted_message.split(":");
+	const ciphertext = encrypted_message.substring(
+		0,
+		encrypted_message.length - 128,
+	);
+	const received_signature = encrypted_message.substring(
+		encrypted_message.length - 128,
+	);
 
 	// decrypt
 	let plaintext = cipher.update(ciphertext, "hex", "utf-8");
@@ -166,12 +182,12 @@ export type Header = {
 };
 
 export const HEADER = (
-	dh_pair: KeyPairSyncResult<string, string>,
+	dh_pair: KeyPairSyncResult<Buffer, Buffer>,
 	previousChainLength: number,
 	messageNumber: number,
 ): Header => {
 	return {
-		dh: dh_pair.publicKey,
+		dh: dh_pair.publicKey.toString("hex"),
 		pn: previousChainLength,
 		n: messageNumber,
 	};

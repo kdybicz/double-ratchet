@@ -14,7 +14,7 @@ import {
 
 export class DoubleRatchet {
 	// DH Ratchet key pair (the "sending" or "self" ratchet key)
-	protected DHs: KeyPairSyncResult<string, string>;
+	protected DHs: KeyPairSyncResult<Buffer, Buffer>;
 
 	// DH Ratchet public key (the "received" or "remote" key)
 	protected DHr: string | null;
@@ -144,7 +144,7 @@ export class DoubleRatchet {
 
 	public static fromKeyPair(
 		sk: Buffer<ArrayBufferLike>,
-		keyPair: KeyPairSyncResult<string, string>,
+		keyPair: KeyPairSyncResult<Buffer, Buffer>,
 	): DoubleRatchet {
 		const cls = new DoubleRatchet();
 		cls.DHs = keyPair;
