@@ -93,7 +93,7 @@ export class DoubleRatchet {
 		header: Header,
 		ciphertext: string,
 		associatedData: Buffer,
-	) {
+	): string {
 		const plaintext = this.TrySkippedMessageKeys(
 			header,
 			ciphertext,
@@ -132,7 +132,7 @@ export class DoubleRatchet {
 		return null;
 	}
 
-	protected SkipMessageKeys(until: number) {
+	protected SkipMessageKeys(until: number): void {
 		if (this.Nr + MAX_SKIP < until) {
 			throw new Error("Too many skipped messages!");
 		}
@@ -147,7 +147,7 @@ export class DoubleRatchet {
 		}
 	}
 
-	protected DHRatchet(header: Header) {
+	protected DHRatchet(header: Header): void {
 		this.PN = this.Ns;
 		this.Ns = 0;
 		this.Nr = 0;
