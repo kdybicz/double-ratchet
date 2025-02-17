@@ -59,10 +59,6 @@ export class DoubleRatchet {
 		ciphertext: string,
 		associatedData: Buffer,
 	) {
-		if (this.CKr === null) {
-			throw new Error("Chain Keys for receiving not initialized!");
-		}
-
 		const plaintext = this.TrySkippedMessageKeys(
 			header,
 			ciphertext,
@@ -79,7 +75,7 @@ export class DoubleRatchet {
 
 		this.SkipMessageKeys(header.n);
 
-		const [newCKr, mk] = KDF_CK(this.CKr);
+		const [newCKr, mk] = KDF_CK(this.CKr as Buffer);
 		this.CKr = newCKr;
 		this.Nr += 1;
 
