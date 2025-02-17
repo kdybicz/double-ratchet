@@ -37,6 +37,41 @@ export class DoubleRatchet {
 	// message number. Raises an exception if too many elements are stored.
 	protected MKSKIPPED: Record<string, Buffer<ArrayBufferLike>>;
 
+	constructor(
+		DHs: KeyPairSyncResult<Buffer, Buffer>,
+		DHr: string | null,
+		RK: Buffer<ArrayBufferLike>,
+		CKs: Buffer<ArrayBufferLike> | null,
+	) {
+		this.DHs = DHs;
+		this.DHr = DHr;
+		this.RK = RK;
+		this.CKs = CKs;
+		this.CKr = null;
+		this.Ns = 0;
+		this.Nr = 0;
+		this.PN = 0;
+		this.MKSKIPPED = {};
+	}
+
+	public static fromPublicKey(
+		sk: Buffer<ArrayBufferLike>,
+		publicKey: string,
+	): DoubleRatchet {
+		const DHs = GENERATE_DH();
+		const DHr = publicKey;
+		const [RK, CKs] = KDF_RK(sk, DH(DHs, DHr));
+
+		return new DoubleRatchet(DHs, DHr, RK, CKs);
+	}
+
+	public static fromKeyPair(
+		sk: Buffer<ArrayBufferLike>,
+		keyPair: KeyPairSyncResult<Buffer, Buffer>,
+	): DoubleRatchet {
+		return new DoubleRatchet(keyPair, null, sk, null);
+	}
+
 	public RatchetEncrypt(
 		plaintext: string,
 		associatedData: Buffer,
@@ -120,38 +155,5 @@ export class DoubleRatchet {
 		[this.RK, this.CKr] = KDF_RK(this.RK, DH(this.DHs, this.DHr as string));
 		this.DHs = GENERATE_DH();
 		[this.RK, this.CKs] = KDF_RK(this.RK, DH(this.DHs, this.DHr as string));
-	}
-
-	public static fromPublicKey(
-		sk: Buffer<ArrayBufferLike>,
-		publicKey: string,
-	): DoubleRatchet {
-		const cls = new DoubleRatchet();
-		cls.DHs = GENERATE_DH();
-		cls.DHr = publicKey;
-		[cls.RK, cls.CKs] = KDF_RK(sk, DH(cls.DHs, cls.DHr));
-		cls.CKr = null;
-		cls.Ns = 0;
-		cls.Nr = 0;
-		cls.PN = 0;
-		cls.MKSKIPPED = {};
-		return cls;
-	}
-
-	public static fromKeyPair(
-		sk: Buffer<ArrayBufferLike>,
-		keyPair: KeyPairSyncResult<Buffer, Buffer>,
-	): DoubleRatchet {
-		const cls = new DoubleRatchet();
-		cls.DHs = keyPair;
-		cls.DHr = null;
-		cls.RK = sk;
-		cls.CKs = null;
-		cls.CKr = null;
-		cls.Ns = 0;
-		cls.Nr = 0;
-		cls.PN = 0;
-		cls.MKSKIPPED = {};
-		return cls;
 	}
 }
