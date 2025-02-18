@@ -4,9 +4,12 @@ import {
 	DH,
 	ENCRYPT,
 	GENERATE_DH,
+	HDECRYPT,
 	HEADER,
+	HENCRYPT,
 	KDF_CK,
 	KDF_RK,
+	KDF_RK_HE,
 } from "../src/utils";
 
 describe("utils", () => {
@@ -140,5 +143,60 @@ describe("utils", () => {
 				n: 5,
 			})}`,
 		);
+	});
+
+	test("Derive new ratchet key, chain key, and header key", () => {
+		// given
+		const alice = GENERATE_DH();
+		const bob = GENERATE_DH();
+		// and
+		const rootKey = Buffer.from("some random key some random key!");
+		const secret = DH(alice, bob.publicKey.toString("hex"));
+
+		// when
+		const [rootKey1, chainKey1, headerKey1] = KDF_RK_HE(rootKey, secret);
+		// then
+		expect(rootKey1.byteLength).toEqual(32);
+		expect(chainKey1.byteLength).toEqual(32);
+		expect(headerKey1.byteLength).toEqual(32);
+
+		// when
+		const [rootKey2, chainKey2, headerKey2] = KDF_RK_HE(rootKey, secret);
+		// then
+		expect(rootKey2).toEqual(rootKey1);
+		expect(chainKey2).toEqual(chainKey1);
+		expect(headerKey2).toEqual(headerKey1);
+
+		// when
+		const [rootKey3, chainKey3, headerKey3] = KDF_RK_HE(rootKey2, secret);
+		// then
+		expect(rootKey3).not.toEqual(rootKey1);
+		expect(chainKey3).not.toEqual(chainKey1);
+		expect(headerKey3).not.toEqual(headerKey1);
+	});
+
+	test("header encrypt", () => {
+		// given
+		const headerKey = Buffer.from("some random key some random key!");
+		const header = { dh: "public key", pn: 0, n: 0 };
+
+		// when
+		const encrypted = HENCRYPT(headerKey, header);
+		// then
+		expect(typeof encrypted).toBe("string");
+		expect(encrypted).not.toEqual(header);
+	});
+
+	test("header decrypt", () => {
+		// given
+		const headerKey = Buffer.from("some random key some random key!");
+		const header = { dh: "public key", pn: 0, n: 0 };
+		// and
+		const encrypted = HENCRYPT(headerKey, header);
+
+		// when
+		const decrypted = HDECRYPT(headerKey, encrypted);
+		// then
+		expect(decrypted).toEqual(header);
 	});
 });

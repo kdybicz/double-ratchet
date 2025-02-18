@@ -12,6 +12,9 @@ import {
 	MAX_SKIP,
 } from "./utils";
 
+/**
+ * Double Ratchet algorithm
+ */
 export class DoubleRatchet {
 	// DH Ratchet key pair (the "sending" or "self" ratchet key)
 	protected DHs: KeyPairSyncResult<Buffer, Buffer>;
@@ -37,6 +40,27 @@ export class DoubleRatchet {
 	// message number. Raises an exception if too many elements are stored.
 	protected MKSKIPPED: Record<string, Buffer<ArrayBufferLike>>;
 
+	/**
+	 * Prior to initialization both parties must use some key agreement protocol
+	 * to agree on a 32-byte shared secret key SK and Bob's ratchet public key.
+	 * These values will be used to populate Alice's sending chain key and Bob's
+	 * root key. Bob's chain keys and Alice's receiving chain key will be left
+	 * empty, since they are populated by each party's first DH ratchet step.
+	 *
+	 * (This assumes Alice begins sending messages first, and Bob doesn't send
+	 * messages until he has received one of Alice's messages. To allow Bob to
+	 * send messages immediately after initialization Bob's sending chain key and
+	 * Alice's receiving chain key could be initialized to a shared secret. For
+	 * the sake of simplicity we won't consider this further.)
+	 *
+	 * Once Alice and Bob have agreed on SK and Bob's ratchet public key, Alice
+	 * calls fromPublicKey() and Bob calls fromKeyPair().
+	 *
+	 * @param DHs
+	 * @param DHr
+	 * @param RK
+	 * @param CKs
+	 */
 	constructor(
 		DHs: KeyPairSyncResult<Buffer, Buffer>,
 		DHr: string | null,
@@ -72,12 +96,20 @@ export class DoubleRatchet {
 		return new DoubleRatchet(keyPair, null, sk, null);
 	}
 
-	public RatchetEncrypt(
-		plaintext: string,
-		associatedData: Buffer,
-	): [Header, string] {
+	/**
+	 * is called to encrypt messages. This function performs a symmetric-key
+	 * ratchet step, then encrypts the message with the resulting message key.
+	 * In addition to the message's plaintext it takes an ad byte sequence which
+	 * is prepended to the header to form the associated data for the underlying
+	 * AEAD encryption.
+	 *
+	 * @param plaintext
+	 * @param ad is for associated data
+	 * @returns
+	 */
+	public RatchetEncrypt(plaintext: string, ad: Buffer): [Header, string] {
 		if (this.CKs === null) {
-			throw new Error("Chain Keys for sending not initialized!");
+			throw new Error("Chain Key for sending not initialized!");
 		}
 
 		const [newCKs, mk] = KDF_CK(this.CKs);
@@ -86,19 +118,36 @@ export class DoubleRatchet {
 		const header = HEADER(this.DHs, this.PN, this.Ns);
 		this.Ns += 1;
 
-		return [header, ENCRYPT(mk, plaintext, CONCAT(associatedData, header))];
+		return [header, ENCRYPT(mk, plaintext, CONCAT(ad, header))];
 	}
 
+	/**
+	 * This function does the following:
+	 * - If the message corresponds to a skipped message key this function
+	 *    decrypts the message, deletes the message key, and returns.
+	 * - Otherwise, if a new ratchet key has been received this function stores
+	 *    any skipped message keys from the receiving chain and performs a DH
+	 *    ratchet step to replace the sending and receiving chains.
+	 * - This function then stores any skipped message keys from the current
+	 *    receiving chain, performs a symmetric-key ratchet step to derive the
+	 *    relevant message key and next chain key, and decrypts the message.
+	 *
+	 * If an exception is raised (e.g. message authentication failure) then the
+	 * message is discarded and changes to the state object are discarded.
+	 * Otherwise, the decrypted plaintext is accepted and changes to the state
+	 * object are stored.
+	 *
+	 * @param header
+	 * @param ciphertext
+	 * @param ad is for associated data
+	 * @returns
+	 */
 	public RatchetDecrypt(
 		header: Header,
 		ciphertext: string,
-		associatedData: Buffer,
+		ad: Buffer,
 	): string {
-		const plaintext = this.TrySkippedMessageKeys(
-			header,
-			ciphertext,
-			associatedData,
-		);
+		const plaintext = this.TrySkippedMessageKeys(header, ciphertext, ad);
 		if (plaintext !== null) {
 			return plaintext;
 		}
@@ -114,19 +163,19 @@ export class DoubleRatchet {
 		this.CKr = newCKr;
 		this.Nr += 1;
 
-		return DECRYPT(mk, ciphertext, CONCAT(associatedData, header));
+		return DECRYPT(mk, ciphertext, CONCAT(ad, header));
 	}
 
 	protected TrySkippedMessageKeys(
 		header: Header,
 		ciphertext: string,
-		associatedData: Buffer,
+		ad: Buffer,
 	): string | null {
 		if (`${header.dh}-${header.n}` in this.MKSKIPPED) {
 			const mk = this.MKSKIPPED[`${header.dh}-${header.n}`];
 			delete this.MKSKIPPED[`${header.dh}-${header.n}`];
 
-			return DECRYPT(mk, ciphertext, CONCAT(associatedData, header));
+			return DECRYPT(mk, ciphertext, CONCAT(ad, header));
 		}
 
 		return null;
