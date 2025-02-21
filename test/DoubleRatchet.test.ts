@@ -2,21 +2,22 @@ import { DoubleRatchet } from "../src/DoubleRatchet";
 import { GENERATE_DH, MAX_SKIP } from "../src/utils";
 
 describe("Double Ratchet", () => {
-	const keyPair = GENERATE_DH();
-	const rootKey = Buffer.from("some random key some random key!");
+	const senderKeyPair = GENERATE_DH();
+	const recipientKeyPair = GENERATE_DH();
 
-	test("Initialize with recipients public key, able to send a message", () => {
+	const rootKey = Buffer.from("some random key some random key!");
+	const ad = Buffer.from("random associated data");
+
+	test("Initialize and send first message", () => {
 		// when
-		const ratchet = DoubleRatchet.fromPublicKey(
+		const ratchet = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
 			rootKey,
-			keyPair.publicKey.toString("hex"),
+			senderKeyPair,
+			recipientKeyPair.publicKey.toString("hex"),
 		);
-		const [header, message] = ratchet.RatchetEncrypt(
-			"plain text message",
-			Buffer.from(""),
-		);
+		const [header, message] = ratchet.RatchetEncrypt("plain text message", ad);
 		// then
-		expect(header.dh).not.toEqual(keyPair.publicKey);
+		expect(header.dh).not.toEqual(recipientKeyPair.publicKey);
 		expect(header.pn).toEqual(0);
 		expect(header.n).toEqual(0);
 		// and
@@ -24,29 +25,28 @@ describe("Double Ratchet", () => {
 		expect(typeof message).toBe("string");
 	});
 
-	test("Initialize with sender key pair, unable to send a message ", () => {
-		// when
-		const ratchet = DoubleRatchet.fromKeyPair(rootKey, keyPair);
-		// then
-		expect(() =>
-			ratchet.RatchetEncrypt("plain text message", Buffer.from("")),
-		).toThrow("Chain Key for sending not initialized!");
-	});
-
 	describe("Alice and Bob", () => {
-		const ad = Buffer.from("random associated data");
-
 		test("Send a message back and forth", () => {
 			// given
-			const bob = DoubleRatchet.fromKeyPair(rootKey, keyPair);
-			// and
-			const alice = DoubleRatchet.fromPublicKey(
+			const bob = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				recipientKeyPair,
+				senderKeyPair.publicKey.toString("hex"),
+			);
+			// and
+			const alice = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
+				rootKey,
+				senderKeyPair,
+				recipientKeyPair.publicKey.toString("hex"),
 			);
 
 			// when
-			const [headerA1, messageA1] = alice.RatchetEncrypt("Hi Bob!", ad);
+			let [headerA1, messageA1] = alice.RatchetEncrypt("Hi Bob!", ad);
+			// then
+			expect(bob.RatchetDecrypt(headerA1, messageA1, ad)).toEqual("Hi Bob!");
+
+			// when
+			[headerA1, messageA1] = alice.RatchetEncrypt("Hi Bob!", ad);
 			// then
 			expect(bob.RatchetDecrypt(headerA1, messageA1, ad)).toEqual("Hi Bob!");
 
@@ -60,11 +60,16 @@ describe("Double Ratchet", () => {
 
 		test("Skip a single message", () => {
 			// given
-			const bob = DoubleRatchet.fromKeyPair(rootKey, keyPair);
-			// and
-			const alice = DoubleRatchet.fromPublicKey(
+			const bob = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				recipientKeyPair,
+				senderKeyPair.publicKey.toString("hex"),
+			);
+			// and
+			const alice = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
+				rootKey,
+				senderKeyPair,
+				recipientKeyPair.publicKey.toString("hex"),
 			);
 
 			// when
@@ -88,11 +93,16 @@ describe("Double Ratchet", () => {
 
 		test("Skip multiple messages at random", () => {
 			// given
-			const bob = DoubleRatchet.fromKeyPair(rootKey, keyPair);
-			// and
-			const alice = DoubleRatchet.fromPublicKey(
+			const bob = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				recipientKeyPair,
+				senderKeyPair.publicKey.toString("hex"),
+			);
+			// and
+			const alice = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
+				rootKey,
+				senderKeyPair,
+				recipientKeyPair.publicKey.toString("hex"),
 			);
 
 			// when
@@ -134,11 +144,16 @@ describe("Double Ratchet", () => {
 
 		test("Skip a too many messages", () => {
 			// given
-			const bob = DoubleRatchet.fromKeyPair(rootKey, keyPair);
-			// and
-			const alice = DoubleRatchet.fromPublicKey(
+			const bob = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				recipientKeyPair,
+				senderKeyPair.publicKey.toString("hex"),
+			);
+			// and
+			const alice = DoubleRatchet.fromSenderKeyPairAndRecipientPublicKey(
+				rootKey,
+				senderKeyPair,
+				recipientKeyPair.publicKey.toString("hex"),
 			);
 			for (let i = 0; i <= MAX_SKIP; i++) {
 				alice.RatchetEncrypt("Hi Bob!", ad);

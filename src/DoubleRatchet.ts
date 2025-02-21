@@ -66,34 +66,29 @@ export class DoubleRatchet {
 		DHr: string | null,
 		RK: Buffer<ArrayBufferLike>,
 		CKs: Buffer<ArrayBufferLike> | null,
+		CKr: Buffer<ArrayBufferLike> | null,
 	) {
 		this.DHs = DHs;
 		this.DHr = DHr;
 		this.RK = RK;
 		this.CKs = CKs;
-		this.CKr = null;
+		this.CKr = CKr;
 		this.Ns = 0;
 		this.Nr = 0;
 		this.PN = 0;
 		this.MKSKIPPED = {};
 	}
 
-	public static fromPublicKey(
+	public static fromSenderKeyPairAndRecipientPublicKey(
 		sk: Buffer<ArrayBufferLike>,
+		keyPair: KeyPairSyncResult<Buffer, Buffer>,
 		publicKey: string,
 	): DoubleRatchet {
-		const DHs = GENERATE_DH();
+		const DHs = keyPair;
 		const DHr = publicKey;
 		const [RK, CKs] = KDF_RK(sk, DH(DHs, DHr));
 
-		return new DoubleRatchet(DHs, DHr, RK, CKs);
-	}
-
-	public static fromKeyPair(
-		sk: Buffer<ArrayBufferLike>,
-		keyPair: KeyPairSyncResult<Buffer, Buffer>,
-	): DoubleRatchet {
-		return new DoubleRatchet(keyPair, null, sk, null);
+		return new DoubleRatchet(DHs, DHr, RK, CKs, CKs);
 	}
 
 	/**
