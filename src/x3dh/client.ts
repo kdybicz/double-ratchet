@@ -49,10 +49,15 @@ export type Prekey = {
 export type SecretMessage = {
 	// Sender id
 	sid: string;
+	// Sender Identity Public Key
 	ik: string;
+	// Sender Ephemeral Public Key
 	ek: string;
+	// Recipient Prekey Id
 	pkid: string;
+	// Recipient One Time Prekey Id
 	opkid?: string;
+	// Encrypted header and message separated with ;
 	msg: string;
 };
 
@@ -115,10 +120,7 @@ export class Client {
 
 	protected rotatePrekey() {
 		const prekey = this.generateDiffieHellmanKeyPair();
-		const signature = Sig(
-			prekey.sk as Buffer,
-			Buffer.from(`${this.userId} and soe other important info`),
-		).toString("hex");
+		const signature = Sig(prekey.sk, this.identityKey.pk);
 		const oneTimePrekeys: Record<string, DHKeyPair> =
 			this.generateOneTimePrekeys();
 
@@ -147,13 +149,24 @@ export class Client {
 		this.prekeys.unshift(newPrekey);
 	}
 
+	/**
+	 * https://www.cs.ru.nl/bachelors-theses/2021/Ferran_van_der_Have___4104145___The_X3DH_Protocol_-_A_Proof_of_Security.pdf
+	 *
+	 * @param userId
+	 * @param message
+	 * @returns
+	 */
 	public sendMessage(userId: string, message: string) {
 		const recipient = this.recipients[userId];
 		if (recipient == null) {
 			const bundle = this.server.fetchPrekeyBundle(userId);
 			const prekey = Buffer.from(bundle.prekey.pk, "hex");
 
-			const validSig = SigVer(prekey, Buffer.from(bundle.signature, "hex"));
+			const validSig = SigVer(
+				prekey,
+				Buffer.from(bundle.identityKey, "hex"),
+				bundle.signature,
+			);
 			if (!validSig) {
 				return;
 			}
@@ -232,7 +245,11 @@ export class Client {
 
 			const prekey = Buffer.from(bundle.prekey.pk, "hex");
 
-			const validSig = SigVer(prekey, Buffer.from(bundle.signature, "hex"));
+			const validSig = SigVer(
+				prekey,
+				Buffer.from(bundle.identityKey, "hex"),
+				bundle.signature,
+			);
 			if (!validSig) {
 				return null;
 			}

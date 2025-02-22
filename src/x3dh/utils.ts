@@ -3,7 +3,9 @@ import {
 	createPublicKey,
 	diffieHellman,
 	hkdfSync,
+	randomBytes,
 } from "node:crypto";
+import { sign, verify } from "./xeddsa";
 
 /**
  * Returns a byte sequence which is the shared secret output from an Elliptic
@@ -38,21 +40,29 @@ export const DH = (
  * M and verifies with public key PK, and which was created by signing M with
  * PK's corresponding private key.
  *
- * @param PK
- * @param M
+ * @param SK X25519 private key
+ * @param M data to sign
  */
 export const Sig = (
-	PK: Buffer<ArrayBufferLike>,
+	SK: Buffer<ArrayBufferLike>,
 	M: Buffer<ArrayBufferLike>,
-): Buffer<ArrayBufferLike> => {
-	return Buffer.from("here is signature");
+): string => {
+	return sign(SK, M, randomBytes(64)).toString("hex");
 };
 
+/**
+ *
+ * @param PK X25519 public key
+ * @param M data that we verify the signature for
+ * @param S the signature
+ * @returns
+ */
 export const SigVer = (
 	PK: Buffer<ArrayBufferLike>,
-	S: Buffer<ArrayBufferLike>,
+	M: Buffer<ArrayBufferLike>,
+	S: string,
 ): boolean => {
-	return Buffer.compare(S, Buffer.from("here is signature")) === 0;
+	return verify(PK, M, Buffer.from(S, "hex"));
 };
 
 /**
