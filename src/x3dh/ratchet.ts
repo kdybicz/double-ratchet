@@ -1,4 +1,4 @@
-import type { KeyPairSyncResult } from "node:crypto";
+import { type KeyPairSyncResult, randomUUID } from "node:crypto";
 
 import {
 	CONCAT,
@@ -13,19 +13,44 @@ import {
 	MAX_SKIP,
 } from "../utils";
 
-export type State = {
+// TODO: workout when what state should be applied
+export enum Status {
+	empty = "empty",
+	active = "active",
+	accepted = "accepted",
+	rejected = "rejected",
+}
+
+export enum Role {
+	initiator = "initiator",
+	responder = "responder",
+}
+
+export interface ReadonlyState {
+	// ID of the current session
+	readonly sessionid: string;
+
+	// The role of the participant, it is either initiator or responder.
+	readonly role: Role;
+}
+
+export interface ModifiableState {
+	// Status of the session. accepted or rejected means that it has fully
+	// completed the computations and accepted or rejected the outcome
+	readonly status: Status;
+
 	// DH Ratchet key pair (the "sending" or "self" ratchet key)
 	readonly DHs: KeyPairSyncResult<Buffer, Buffer>;
 
 	// DH Ratchet public key (the "received" or "remote" key)
-	readonly DHr: string;
+	readonly DHr?: string;
 
 	// 32-byte Root Key
 	readonly RK: Buffer<ArrayBufferLike>;
 
 	// 32-byte Chain Keys for sending and receiving
-	readonly CKs: Buffer<ArrayBufferLike>;
-	readonly CKr: Buffer<ArrayBufferLike>;
+	readonly CKs?: Buffer<ArrayBufferLike>;
+	readonly CKr?: Buffer<ArrayBufferLike>;
 
 	// Message numbers for sending and receiving
 	readonly Ns: number;
@@ -37,6 +62,48 @@ export type State = {
 	// Dictionary of skipped-over message keys, indexed by ratchet public key and
 	// message number. Raises an exception if too many elements are stored.
 	readonly MKSKIPPED: Record<string, Buffer<ArrayBufferLike>>;
+}
+
+export interface State extends ReadonlyState, ModifiableState {
+	readonly version: number;
+	readonly prev?: State;
+}
+
+/**
+ * Function initialize the state object, based on DH Key Pair of the sender,
+ * DH Public Key of the recipient and agreed Secret Key.
+ *
+ * @param sk
+ * @param senderKeyPair
+ * @param recipientPublicKey
+ * @returns
+ */
+export const InitInitiatorState = (
+	sk: Buffer<ArrayBufferLike>,
+	senderKeyPair: KeyPairSyncResult<Buffer, Buffer>,
+	recipientPublicKey: string,
+): State => {
+	const role = Role.initiator;
+	const status = Status.empty;
+
+	const DHs = senderKeyPair;
+	const DHr = recipientPublicKey;
+	const [RK, CKs] = KDF_RK(sk, DH(DHs, DHr));
+
+	return {
+		sessionid: randomUUID(),
+		role,
+		status,
+		DHs,
+		DHr,
+		RK,
+		CKs,
+		Ns: 0,
+		Nr: 0,
+		PN: 0,
+		MKSKIPPED: {},
+		version: 0,
+	};
 };
 
 /**
@@ -48,25 +115,27 @@ export type State = {
  * @param recipientPublicKey
  * @returns
  */
-export const InitState = (
+export const InitResponderState = (
 	sk: Buffer<ArrayBufferLike>,
 	senderKeyPair: KeyPairSyncResult<Buffer, Buffer>,
-	recipientPublicKey: string,
 ): State => {
+	const role = Role.responder;
+	const status = Status.accepted;
+
 	const DHs = senderKeyPair;
-	const DHr = recipientPublicKey;
-	const [RK, CK] = KDF_RK(sk, DH(DHs, DHr));
+	const RK = sk;
 
 	return {
+		sessionid: randomUUID(),
+		role,
+		status,
 		DHs,
-		DHr,
 		RK,
-		CKs: CK,
-		CKr: CK,
 		Ns: 0,
 		Nr: 0,
 		PN: 0,
 		MKSKIPPED: {},
+		version: 0,
 	};
 };
 
@@ -80,11 +149,13 @@ export const InitState = (
  */
 export const RotateState = (
 	oldState: State,
-	newPartialState: Partial<State>,
+	newPartialState: Partial<ModifiableState>,
 ) => {
 	return {
 		...oldState,
 		...newPartialState,
+		version: oldState.version + 1,
+		prev: oldState,
 	};
 };
 
@@ -118,6 +189,7 @@ export const RatchetEncrypt = (
 		Ns: state.Ns + 1,
 	});
 
+	console.log(`encrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, CKs: ${newCKs.toString("hex")}`);
 	return [newState, header, ENCRYPT(mk, plaintext, CONCAT(ad, header))];
 };
 
@@ -149,29 +221,31 @@ export const RatchetDecrypt = (
 	ciphertext: string,
 	ad: Buffer,
 ): [State, string] => {
-	let currState = state;
+	let newState = state;
 
-	const plaintext = TrySkippedMessageKeys(currState, header, ciphertext, ad);
+	const plaintext = TrySkippedMessageKeys(newState, header, ciphertext, ad);
 	if (plaintext !== null) {
-		return [currState, plaintext];
+		return [newState, plaintext];
 	}
 
-	if (header.dh !== currState.DHr) {
-		currState = SkipMessageKeys(currState, header.pn);
-		currState = DHRatchet(currState, header);
+	if (header.dh !== newState.DHr) {
+		newState = SkipMessageKeys(newState, header.pn);
+		newState = DHRatchet(newState, header);
 	}
 
-	currState = SkipMessageKeys(state, header.n);
+	newState = SkipMessageKeys(newState, header.n);
 
-	const [CKr, mk] = KDF_CK(currState.CKr);
-	const Nr = currState.Nr + 1;
+	const oldCKr = newState.CKr;
+	const [CKr, mk] = KDF_CK(newState.CKr);
+	const Nr = newState.Nr + 1;
 
-	currState = RotateState(currState, {
+	newState = RotateState(newState, {
 		CKr,
 		Nr,
 	});
 
-	return [currState, DECRYPT(mk, ciphertext, CONCAT(ad, header))];
+	console.log(`decrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, oldCKr: ${oldCKr?.toString("hex")}, CKr: ${CKr.toString("hex")}`);
+	return [newState, DECRYPT(mk, ciphertext, CONCAT(ad, header))];
 };
 
 export const TrySkippedMessageKeys = (
@@ -195,8 +269,8 @@ export const SkipMessageKeys = (state: State, until: number): State => {
 		throw new Error("Too many skipped messages!");
 	}
 
-	if (state.CKr !== null) {
-		let newState = state;
+	let newState = state;
+	if (newState.CKr !== null) {
 		while (newState.Nr < until) {
 			const [CKr, mk] = KDF_CK(newState.CKr);
 			const MKSKIPPED = {
@@ -211,11 +285,9 @@ export const SkipMessageKeys = (state: State, until: number): State => {
 				MKSKIPPED,
 			});
 		}
-
-		return newState;
 	}
 
-	return state;
+	return newState;
 };
 
 const DHRatchet = (state: State, header: Header): State => {
@@ -227,7 +299,7 @@ const DHRatchet = (state: State, header: Header): State => {
 	const DHs = GENERATE_DH();
 	const [RK2, CKs] = KDF_RK(RK1, DH(DHs, DHr));
 
-	return RotateState(state, {
+	const newState = RotateState(state, {
 		DHs,
 		DHr,
 		RK: RK2,
@@ -237,4 +309,47 @@ const DHRatchet = (state: State, header: Header): State => {
 		Nr,
 		PN,
 	});
+
+	console.log(` --- ratchet ---
+ - old state: ${StateToString(state)}
+ - new state: ${StateToString(newState)}`);
+
+	return newState;
+};
+
+export const StateToString = (state: State): string => {
+	const dump = Object.entries(state).reduce((accu, [key, val]) => {
+		switch (key) {
+			case "DHs":
+				return {
+					// biome-ignore lint/performance/noAccumulatingSpread: temporary solution
+					...accu,
+					[key]: {
+						publicKey: val.publicKey.toString("hex"),
+						privateKey: val.privateKey.toString("hex"),
+					},
+				};
+			case "RK":
+			case "CKs":
+			case "CKr":
+				return {
+					// biome-ignore lint/performance/noAccumulatingSpread: temporary solution
+					...accu,
+					[key]: val.toString("hex"),
+				};
+			case "prev":
+				return  {
+					// biome-ignore lint/performance/noAccumulatingSpread: temporary solution
+					...accu,
+					[key]: val != null,
+				};
+			default:
+				return {
+					// biome-ignore lint/performance/noAccumulatingSpread: temporary solution
+					...accu,
+					[key]: val,
+				};
+		}
+	}, {});
+	return JSON.stringify(dump);
 };

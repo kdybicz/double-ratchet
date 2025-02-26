@@ -91,7 +91,7 @@ export const KDF_RK = (
  * @returns
  */
 export const KDF_CK = (
-	ck: Buffer<ArrayBufferLike>,
+	ck?: Buffer<ArrayBufferLike>,
 ): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>] => {
 	if (ck?.byteLength !== 32) {
 		throw new Error(`Invalid key size: ${ck?.byteLength}`);
@@ -225,8 +225,11 @@ export const DECRYPT = (
 };
 
 export type Header = {
+	// Sender Identity public key
 	dh: string;
+	// Previous message chain length
 	pn: number;
+	// Message number in current chain
 	n: number;
 };
 

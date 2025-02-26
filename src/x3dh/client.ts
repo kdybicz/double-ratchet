@@ -2,10 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import { GENERATE_DH } from "../utils";
 import {
-	InitState,
+	InitInitiatorState,
+	InitResponderState,
 	RatchetDecrypt,
 	RatchetEncrypt,
+	Role,
 	type State,
+	StateToString,
+	Status,
 } from "./ratchet";
 import type { Server } from "./server";
 import { DH, Encode, KDF, Sig, SigVer } from "./utils";
@@ -50,11 +54,11 @@ export type SecretMessage = {
 	// Sender id
 	sid: string;
 	// Sender Identity Public Key
-	ik: string;
+	ik?: string;
 	// Sender Ephemeral Public Key
-	ek: string;
+	ek?: string;
 	// Recipient Prekey Id
-	pkid: string;
+	pkid?: string;
 	// Recipient One Time Prekey Id
 	opkid?: string;
 	// Encrypted header and message separated with ;
@@ -157,9 +161,10 @@ export class Client {
 	 * @returns
 	 */
 	public sendMessage(userId: string, message: string) {
-		const recipient = this.recipients[userId];
-		if (recipient == null) {
-			const bundle = this.server.fetchPrekeyBundle(userId);
+		const bundle = this.server.fetchPrekeyBundle(userId);
+
+		const state = this.recipients[userId]?.state;
+		if (state == null) {
 			const prekey = Buffer.from(bundle.prekey.pk, "hex");
 
 			const validSig = SigVer(
@@ -168,6 +173,9 @@ export class Client {
 				bundle.signature,
 			);
 			if (!validSig) {
+				console.error(
+					`Prekey bundle signature verification failed for user: ${userId}`,
+				);
 				return;
 			}
 
@@ -198,19 +206,19 @@ export class Client {
 			const SK = KDF(Buffer.concat(DHList));
 			const AD = Buffer.concat([Encode(this.identityKey.pk), Encode(IKb)]);
 
-			console.log(
-				JSON.stringify({
-					sk: SK.toString("hex"),
-					ad: AD.toString("hex"),
-				}),
-			);
+			// console.log(
+			// 	JSON.stringify({
+			// 		sk: SK.toString("hex"),
+			// 		ad: AD.toString("hex"),
+			// 	}),
+			// );
 
-			const initialState = InitState(
+			const initialState = InitInitiatorState(
 				SK,
 				{ publicKey: this.identityKey.pk, privateKey: this.identityKey.sk },
 				bundle.identityKey,
 			);
-			const [state, header, encryptedMessage] = RatchetEncrypt(
+			const [newState, header, encryptedMessage] = RatchetEncrypt(
 				initialState,
 				message,
 				AD,
@@ -224,25 +232,56 @@ export class Client {
 				opkid: bundle.oneTimePrekey?.id,
 				msg: `${JSON.stringify(header)};${encryptedMessage}`,
 			};
-			console.log(`Secret message: ${JSON.stringify(secretMessage)}`);
-			console.log(`State: ${JSON.stringify(state)}`);
+
+			console.log(`-- ${this.userId}
+ - state before send: ${StateToString(initialState)}
+ - sends initial message to ${userId} - Header: ${JSON.stringify(header)} Encrypted message: ${encryptedMessage}
+ - current state: ${StateToString(newState)}
+`);
 
 			this.server.sendMessage(userId, secretMessage);
 
 			this.recipients[userId] = {
 				id: userId,
+				state: newState,
+			};
+		} else {
+			const AD = Buffer.concat([
+				Encode(this.identityKey.pk),
+				Encode(Buffer.from(bundle.identityKey, "hex")),
+			]);
+			const [newState, header, encryptedMessage] = RatchetEncrypt(
 				state,
+				message,
+				AD,
+			);
+
+			const secretMessage: SecretMessage = {
+				sid: this.userId,
+				msg: `${JSON.stringify(header)};${encryptedMessage}`,
+			};
+
+			console.log(`-- ${this.userId}
+ - state before send: ${StateToString(state)}
+ - sends message to ${userId} - Header: ${JSON.stringify(header)} Encrypted message: ${encryptedMessage}
+ - current state: ${StateToString(newState)}
+`);
+
+			this.server.sendMessage(userId, secretMessage);
+
+			this.recipients[userId] = {
+				id: userId,
+				state: newState,
 			};
 		}
 	}
 
 	protected decryptMessage(message: SecretMessage): string | null {
 		const recipientId = message.sid;
+		const bundle = this.server.fetchPrekeyBundle(recipientId);
 
-		const recipient = this.recipients[recipientId];
-		if (recipient == null) {
-			const bundle = this.server.fetchPrekeyBundle(recipientId);
-
+		let state = this.recipients[recipientId]?.state;
+		if (state == null) {
 			const prekey = Buffer.from(bundle.prekey.pk, "hex");
 
 			const validSig = SigVer(
@@ -254,8 +293,8 @@ export class Client {
 				return null;
 			}
 
-			const IKa = Buffer.from(message.ik, "hex");
-			const EKa = Buffer.from(message.ek, "hex");
+			const IKa = Buffer.from(message.ik as string, "hex");
+			const EKa = Buffer.from(message.ek as string, "hex");
 			const IKb = this.identityKey.sk;
 			const SPKb = this.prekeys.find((val) => val.prekey.id === message.pkid)
 				?.prekey.sk;
@@ -286,29 +325,31 @@ export class Client {
 			const SK = KDF(Buffer.concat(DHList));
 			const AD = Buffer.concat([Encode(IKa), Encode(this.identityKey.pk)]);
 
-			console.log(
-				JSON.stringify({
-					sk: SK.toString("hex"),
-					ad: AD.toString("hex"),
-				}),
-			);
+			// console.log(
+			// 	JSON.stringify({
+			// 		sk: SK.toString("hex"),
+			// 		ad: AD.toString("hex"),
+			// 	}),
+			// );
 
-			const initialState = InitState(
+			state = InitResponderState(
 				SK,
 				{ publicKey: this.identityKey.pk, privateKey: this.identityKey.sk },
-				message.ik,
 			);
 
 			const [header, encryptedMessage] = message.msg.split(";");
-			const [state, decryptedMessage] = RatchetDecrypt(
-				initialState,
+			const [newState, decryptedMessage] = RatchetDecrypt(
+				state,
 				JSON.parse(header),
 				encryptedMessage,
 				AD,
 			);
 
-			console.log(`Decrypted message: ${decryptedMessage}`);
-			console.log(`State: ${JSON.stringify(state)}`);
+			console.log(`-- ${this.userId}
+ - state before receive: ${StateToString(state)}
+ - receives initial message from ${recipientId} - Header: ${header} Decrypted message: ${decryptedMessage}
+ - current state: ${StateToString(newState)}
+`);
 
 			// Remove used One Time Prekey
 			const oneTimePrekeys = this.prekeys.find(
@@ -320,13 +361,37 @@ export class Client {
 
 			this.recipients[recipientId] = {
 				id: recipientId,
-				state,
+				state: newState,
 			};
 
 			return decryptedMessage;
 		}
 
-		return null;
+		const AD = Buffer.concat([
+			Encode(Buffer.from(bundle.identityKey, "hex")),
+			Encode(this.identityKey.pk),
+		]);
+		console.log(`-- ${this.userId}
+ - state before receive: ${StateToString(state)}`);
+		const [header, encryptedMessage] = message.msg.split(";");
+		console.log(` - receives message from ${recipientId} - Header: ${header}`);
+		const [newState, decryptedMessage] = RatchetDecrypt(
+			state,
+			JSON.parse(header),
+			encryptedMessage,
+			AD,
+		);
+
+		console.log(` - receives message from ${recipientId} - Decrypted message: ${decryptedMessage}
+ - current state: ${StateToString(newState)}
+`);
+
+		this.recipients[recipientId] = {
+			id: recipientId,
+			state: newState,
+		};
+
+		return decryptedMessage;
 	}
 
 	public fetchMessages() {

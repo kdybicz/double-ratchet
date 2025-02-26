@@ -34,7 +34,6 @@ describe("Montgomery curve", () => {
 
 		// when
 		const signature = sign(x25519KeyPairDer.privateKey, M, Z);
-		console.log(signature.length);
 		// when
 		const valid = verify(x25519KeyPairDer.publicKey, M, signature);
 		expect(valid).toEqual(true);
