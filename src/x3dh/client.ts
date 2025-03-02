@@ -332,10 +332,10 @@ export class Client {
 			// 	}),
 			// );
 
-			state = InitResponderState(
-				SK,
-				{ publicKey: this.identityKey.pk, privateKey: this.identityKey.sk },
-			);
+			state = InitResponderState(SK, {
+				publicKey: this.identityKey.pk,
+				privateKey: this.identityKey.sk,
+			});
 
 			const [header, encryptedMessage] = message.msg.split(";");
 			const [newState, decryptedMessage] = RatchetDecrypt(

@@ -79,7 +79,7 @@ export class DoubleRatchet {
 		this.MKSKIPPED = {};
 	}
 
-	public static fromSenderKeyPairAndRecipientPublicKey(
+	public static fromInitiatorSide(
 		sk: Buffer<ArrayBufferLike>,
 		keyPair: KeyPairSyncResult<Buffer, Buffer>,
 		publicKey: string,
@@ -89,6 +89,13 @@ export class DoubleRatchet {
 		const [RK, CKs] = KDF_RK(sk, DH(DHs, DHr));
 
 		return new DoubleRatchet(DHs, DHr, RK, CKs, CKs);
+	}
+
+	public static fromResponderSide(
+		sk: Buffer<ArrayBufferLike>,
+		keyPair: KeyPairSyncResult<Buffer, Buffer>,
+	): DoubleRatchet {
+		return new DoubleRatchet(keyPair, null, sk, null, null);
 	}
 
 	/**

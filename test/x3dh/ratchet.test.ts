@@ -633,8 +633,11 @@ describe("X3DH Double Ratchet", () => {
 					);
 					messages.push([aliceHeader, aliceMessage]);
 				}
-				while(messages.length > 0) {
-					const [aliceHeader, aliceMessage] = messages.pop() as [Header, string];
+				while (messages.length > 0) {
+					const [aliceHeader, aliceMessage] = messages.pop() as [
+						Header,
+						string,
+					];
 					[bobState, bobMessage] = RatchetDecrypt(
 						bobState,
 						aliceHeader,
@@ -651,7 +654,7 @@ describe("X3DH Double Ratchet", () => {
 					);
 					messages.push([bobHeader, bobMessage]);
 				}
-				while(messages.length > 0) {
+				while (messages.length > 0) {
 					const [bobHeader, bobMessage] = messages.pop() as [Header, string];
 					console.log(`i: ${i} -> Header: ${JSON.stringify(bobHeader)}`);
 					[aliceState, aliceMessage] = RatchetDecrypt(

@@ -2,16 +2,21 @@ import { DoubleRatchetHE } from "../src/DoubleRatchetHE";
 import { GENERATE_DH, MAX_SKIP } from "../src/utils";
 
 describe("Double Ratchet with header encryption", () => {
-	const keyPair = GENERATE_DH();
+	const initiatorKeyPair = GENERATE_DH();
+	const responderKeyPair = GENERATE_DH();
+
 	const rootKey = Buffer.from("some random key some random key!");
+	const ad = Buffer.from("random associated data");
+
 	const shared_hka = Buffer.from("random some key random some key!");
 	const shared_nhkb = Buffer.from("key some random key some random!");
 
 	test("Initialize with recipients public key, able to send a message", () => {
 		// when
-		const ratchet = DoubleRatchetHE.fromPublicKey(
+		const ratchet = DoubleRatchetHE.fromInitiatorSide(
 			rootKey,
-			keyPair.publicKey.toString("hex"),
+			initiatorKeyPair,
+			responderKeyPair.publicKey.toString("hex"),
 			shared_hka,
 			shared_nhkb,
 		);
@@ -29,9 +34,9 @@ describe("Double Ratchet with header encryption", () => {
 
 	test("Initialize with sender key pair, unable to send a message ", () => {
 		// when
-		const ratchet = DoubleRatchetHE.fromKeyPair(
+		const ratchet = DoubleRatchetHE.fromResponderSide(
 			rootKey,
-			keyPair,
+			responderKeyPair,
 			shared_hka,
 			shared_nhkb,
 		);
@@ -42,20 +47,19 @@ describe("Double Ratchet with header encryption", () => {
 	});
 
 	describe("Alice and Bob", () => {
-		const ad = Buffer.from("random associated data");
-
 		test("Send a message back and forth", () => {
 			// given
-			const bob = DoubleRatchetHE.fromKeyPair(
+			const alice = DoubleRatchetHE.fromInitiatorSide(
 				rootKey,
-				keyPair,
+				initiatorKeyPair,
+				responderKeyPair.publicKey.toString("hex"),
 				shared_hka,
 				shared_nhkb,
 			);
 			// and
-			const alice = DoubleRatchetHE.fromPublicKey(
+			const bob = DoubleRatchetHE.fromResponderSide(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				responderKeyPair,
 				shared_hka,
 				shared_nhkb,
 			);
@@ -75,16 +79,17 @@ describe("Double Ratchet with header encryption", () => {
 
 		test("Skip a single message", () => {
 			// given
-			const bob = DoubleRatchetHE.fromKeyPair(
+			const alice = DoubleRatchetHE.fromInitiatorSide(
 				rootKey,
-				keyPair,
+				initiatorKeyPair,
+				responderKeyPair.publicKey.toString("hex"),
 				shared_hka,
 				shared_nhkb,
 			);
 			// and
-			const alice = DoubleRatchetHE.fromPublicKey(
+			const bob = DoubleRatchetHE.fromResponderSide(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				responderKeyPair,
 				shared_hka,
 				shared_nhkb,
 			);
@@ -112,16 +117,17 @@ describe("Double Ratchet with header encryption", () => {
 
 		test("Skip multiple messages at random", () => {
 			// given
-			const bob = DoubleRatchetHE.fromKeyPair(
+			const alice = DoubleRatchetHE.fromInitiatorSide(
 				rootKey,
-				keyPair,
+				initiatorKeyPair,
+				responderKeyPair.publicKey.toString("hex"),
 				shared_hka,
 				shared_nhkb,
 			);
 			// and
-			const alice = DoubleRatchetHE.fromPublicKey(
+			const bob = DoubleRatchetHE.fromResponderSide(
 				rootKey,
-				keyPair.publicKey.toString("hex"),
+				responderKeyPair,
 				shared_hka,
 				shared_nhkb,
 			);
@@ -173,22 +179,23 @@ describe("Double Ratchet with header encryption", () => {
 
 		test("Skip a too many messages", () => {
 			// given
-			const bob = DoubleRatchetHE.fromKeyPair(
+			const alice = DoubleRatchetHE.fromInitiatorSide(
 				rootKey,
-				keyPair,
-				shared_hka,
-				shared_nhkb,
-			);
-			// and
-			const alice = DoubleRatchetHE.fromPublicKey(
-				rootKey,
-				keyPair.publicKey.toString("hex"),
+				initiatorKeyPair,
+				responderKeyPair.publicKey.toString("hex"),
 				shared_hka,
 				shared_nhkb,
 			);
 			for (let i = 0; i <= MAX_SKIP; i++) {
 				alice.RatchetEncryptHE("Hi Bob!", ad);
 			}
+			// and
+			const bob = DoubleRatchetHE.fromResponderSide(
+				rootKey,
+				responderKeyPair,
+				shared_hka,
+				shared_nhkb,
+			);
 
 			// when
 			const [header, message] = alice.RatchetEncryptHE("Hi Bob!", ad);

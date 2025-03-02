@@ -94,20 +94,21 @@ export class DoubleRatchetHE {
 		this.MKSKIPPED = {};
 	}
 
-	public static fromPublicKey(
+	public static fromInitiatorSide(
 		sk: Buffer<ArrayBufferLike>,
+		keyPair: KeyPairSyncResult<Buffer, Buffer>,
 		publicKey: string,
 		sharedHKa: Buffer<ArrayBufferLike>,
 		sharedNHKb: Buffer<ArrayBufferLike>,
 	): DoubleRatchetHE {
-		const DHs = GENERATE_DH();
+		const DHs = keyPair;
 		const DHr = publicKey;
 		const [RK, CKs, NHKs] = KDF_RK_HE(sk, DH(DHs, DHr));
 
 		return new DoubleRatchetHE(DHs, DHr, RK, CKs, sharedHKa, NHKs, sharedNHKb);
 	}
 
-	public static fromKeyPair(
+	public static fromResponderSide(
 		sk: Buffer<ArrayBufferLike>,
 		keyPair: KeyPairSyncResult<Buffer, Buffer>,
 		sharedHKa: Buffer<ArrayBufferLike>,

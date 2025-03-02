@@ -39,7 +39,7 @@ export class Server {
 
 	public fetchMessages(userId: string): SecretMessage[] {
 		const messages = this.messages[userId] ?? [];
-		delete this.messages[userId]
+		delete this.messages[userId];
 		return messages;
 	}
 }

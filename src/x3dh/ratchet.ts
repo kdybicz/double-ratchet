@@ -189,7 +189,9 @@ export const RatchetEncrypt = (
 		Ns: state.Ns + 1,
 	});
 
-	console.log(`encrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, CKs: ${newCKs.toString("hex")}`);
+	console.log(
+		`encrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, CKs: ${newCKs.toString("hex")}`,
+	);
 	return [newState, header, ENCRYPT(mk, plaintext, CONCAT(ad, header))];
 };
 
@@ -244,7 +246,9 @@ export const RatchetDecrypt = (
 		Nr,
 	});
 
-	console.log(`decrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, oldCKr: ${oldCKr?.toString("hex")}, CKr: ${CKr.toString("hex")}`);
+	console.log(
+		`decrypt - role: ${newState.role}, mk: ${mk.toString("hex")}, oldCKr: ${oldCKr?.toString("hex")}, CKr: ${CKr.toString("hex")}`,
+	);
 	return [newState, DECRYPT(mk, ciphertext, CONCAT(ad, header))];
 };
 
@@ -338,7 +342,7 @@ export const StateToString = (state: State): string => {
 					[key]: val.toString("hex"),
 				};
 			case "prev":
-				return  {
+				return {
 					// biome-ignore lint/performance/noAccumulatingSpread: temporary solution
 					...accu,
 					[key]: val != null,
